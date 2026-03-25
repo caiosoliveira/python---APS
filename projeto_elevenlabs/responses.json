@@ -1,0 +1,64 @@
+{
+  "pairs": [
+    {
+      "question": "Qual é o horário de atendimento?",
+      "answer": "Estamos abertos de segunda a sexta, das oito às vinte horas, e ao sábado das nove às treze horas."
+    },
+    {
+      "question": "Como posso marcar uma consulta?",
+      "answer": "Pode marcar consulta pelo telefone, ou através do nosso site oficial."
+    },
+    {
+      "question": "Aceitam seguro de saúde?",
+      "answer": "Sim, trabalhamos com a maioria das seguradoras. Por favor confirme a sua apólice antes da consulta."
+    },
+    {
+      "question": "Onde ficam localizados?",
+      "answer": "Estamos situados no centro da cidade, perto do metro. Pode consultar a morada no nosso site."
+    },
+    {
+      "question": "Qual é o custo de uma consulta?",
+      "answer": "O preço de consulta geral é de cinquenta euros. Especialidades podem ter custo diferente."
+    },
+    {
+      "question": "Têm estacionamento disponível?",
+      "answer": "Sim, dispomos de estacionamento gratuito para clientes nas traseiras do edifício."
+    },
+    {
+      "question": "Quanto tempo dura uma consulta?",
+      "answer": "Uma consulta geral dura em média trinta minutos. Consultas de especialidade podem demorar mais."
+    },
+    {
+      "question": "Podem enviar os resultados por email?",
+      "answer": "Sim, enviamos os resultados para o email que indicar no momento do registo."
+    },
+    {
+    "question": "Como chego às vossas instalações?",
+    "answer": "Estamos situados no centro da cidade, perto do metro. Pode consultar a morada no nosso site."
+    },
+    {
+      "question": "Ficam perto do metro?",
+      "answer": "Estamos situados no centro da cidade, perto do metro. Pode consultar a morada no nosso site."
+    },
+    {
+    "question": "Como faço para marcar uma consulta?",
+    "answer": "Pode marcar consulta pelo telefone, ou através do nosso site oficial."
+    },
+    {
+    "question": "Não tenho informação sobre esse assunto",
+    "answer": "Desculpe, não tenho informação sobre esse tema. Posso ajudar com horários, consultas ou localização."
+    },
+    {
+    "question": "Como marco uma consulta?",
+    "answer": "Pode marcar consulta pelo telefone, ou através do nosso site oficial."
+    },
+    {
+      "question": "Quero marcar uma consulta",
+      "answer": "Pode marcar consulta pelo telefone, ou através do nosso site oficial."
+    },
+    {
+      "question": "Como faço para marcar?",
+      "answer": "Pode marcar consulta pelo telefone, ou através do nosso site oficial."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+elevenlabs          # SDK oficial ElevenLabs (STT + TTS + clonagem)
+sounddevice         # captura microfone em tempo real
+scipy               # gravar/ler .wav
+numpy               # manipulação de arrays de áudio
+sentence-transformers  # embeddings semânticos para o bloco 3
+pygame              # reproduzir o áudio TTS
+python-dotenv       # gerir a API key sem a hardcodar
+streamlit           # interface web para demo final
+jupyter             # notebooks
+ipykernel           # ligar o kernel ao VSCode
