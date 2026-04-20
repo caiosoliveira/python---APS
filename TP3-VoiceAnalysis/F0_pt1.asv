@@ -1,0 +1,214 @@
+%% Pré-processamento
+clear; clc; close all;
+
+% audio_showv2.m
+% F0 extraction using:
+%  - Method A: Autocorrelation
+%  - Method B: Autocorrelation + Center-Clipping (30% by default)
+%  - Method C: Cepstrum
+% Compares results with Praat-extracted F0 (text or csv with time,F0 columns).
+% v2: all four signals are resampled onto a single common uniform time grid
+%     (covering the overlap of both time ranges) via linear interpolation,
+%     so every comparison is sample-coincident.
+
+%% User-adjustable parameters
+wavFile = 'tp3_pt1.wav';       % input audio (assumed mono). Change as needed.
+praatFile = 'praat_f0.txt';      % Praat output: two columns [time(s), F0(Hz)] or csv
+frameLen_ms = 30;                % frame length in ms (as required)
+frameShift_ms = 15;              % frame shift in ms; default 50% overlap
+centerClipRatio = 0.30;          % center-clipping threshold as fraction of frame max
+minF0 = 50;                      % minimum expected F0 (Hz)
+maxF0 = 500;                     % maximum expected F0 (Hz)
+
+%% Read audio
+[x, Fs] = audioread(wavFile);
+if size(x,2) > 1
+    x = mean(x,2); % convert to mono if necessary
+end
+x = x / max(abs(x)); % normalize
+
+%% Frame parameters
+frameLen  = round(Fs * frameLen_ms  / 1000);
+frameShift = round(Fs * frameShift_ms / 1000);
+win = hamming(frameLen); % analysis window
+nFrames = floor((length(x) - frameLen) / frameShift) + 1;
+
+% vector of frame center times (seconds)
+frameTimes = ((0:(nFrames-1)) * frameShift + (frameLen/2)) / Fs;
+frameTimes = frameTimes(:);
+
+%% Preallocations
+f0_ac   = zeros(nFrames,1);   % autocorrelation
+f0_cl   = zeros(nFrames,1);   % autocorr + center clipping
+f0_ceps = zeros(nFrames,1);   % cepstrum
+
+%% Allowed lag range (samples)
+maxLag = floor(Fs / minF0); % corresponds to min F0
+minLag = ceil(Fs  / maxF0); % corresponds to max F0
+
+%% Main frame loop
+for k = 1:nFrames
+    idx      = (k-1)*frameShift + (1:frameLen);
+    rawFrame = x(idx);
+    frame    = rawFrame .* win;
+
+    % --- Method A: Autocorrelation ---
+    ac  = xcorr(frame);
+    mid = ceil(length(ac)/2);
+    ac_pos = ac(mid + minLag : mid + maxLag);
+    [~, relIdx] = max(ac_pos);
+    lagA = minLag + (relIdx - 1);
+    f0_ac(k) = Fs / lagA;
+
+    % --- Method B: Center-clipping then autocorrelation ---
+    clipTh = centerClipRatio * max(abs(rawFrame));
+    cl = sign(rawFrame) .* max(abs(rawFrame) - clipTh, 0);
+    if all(cl == 0)
+        clipTh2 = centerClipRatio/2 * max(abs(rawFrame));
+        cl = sign(rawFrame) .* max(abs(rawFrame) - clipTh2, 0);
+        if all(cl == 0)
+            cl = frame;
+        end
+    end
+
+    ac_cl  = xcorr(cl);
+    mid    = ceil(length(ac_cl)/2);
+    ac_cl_pos = ac_cl(mid + minLag : mid + maxLag);
+    if max(abs(ac_cl_pos)) > 0
+        ac_cl_pos = ac_cl_pos / max(abs(ac_cl_pos));
+    end
+
+    [pks, locs] = findpeaks(ac_cl_pos, 'MinPeakProminence', 0.1, 'MinPeakDistance', minLag);
+    if isempty(pks)
+        [~, relIdx2] = max(ac_cl_pos);
+        lagB = minLag + (relIdx2 - 1);
+    else
+        [~, best] = max(pks);
+        lagB = minLag + (locs(best) - 1);
+    end
+    f0_cl(k) = Fs / lagB;
+
+    % --- Method C: Cepstrum ---
+    Nfft   = 2^nextpow2(frameLen*2);
+    S      = fft(frame, Nfft);
+    logMag = log(abs(S) + eps);
+    cep    = ifft(logMag);
+    qMin   = floor(Fs / maxF0);
+    qMax   = ceil(Fs  / minF0);
+    cep_pos = real(cep(qMin:qMax));
+    [~, qidx] = max(cep_pos);
+    q_peak = qMin + (qidx - 1);
+    f0_ceps(k) = Fs / q_peak;
+end
+
+%% Load Praat F0 data
+praatData  = load(praatFile);
+praatTimes = praatData(:,1);
+praatF0    = praatData(:,2);
+
+%% Measure and correct the time lag between Praat and MATLAB via cross-correlation
+% Praat uses a ~71 ms analysis window vs MATLAB's 30 ms. At transitions the
+% longer window makes Praat's curve appear shifted right by ~20-30 ms.
+% We detect the actual lag on a fine grid and subtract it from praatTimes.
+
+dt_fine  = frameShift / Fs / 4;                          % 4x finer than frame step
+t_fine_s = max(frameTimes(1),   praatTimes(1));
+t_fine_e = min(frameTimes(end), praatTimes(end));
+t_fine   = (t_fine_s : dt_fine : t_fine_e)';
+
+praat_fine = interp1(praatTimes, praatF0, t_fine, 'linear');
+ac_fine    = interp1(frameTimes, f0_ac,   t_fine, 'linear');
+
+% xcorr(x,y) peaks at lag L when x(k) ≈ y(k-L), i.e. x lags y by L samples
+maxLagSmp = round(0.15 / dt_fine);                        % search ±150 ms
+[xc, lags] = xcorr(praat_fine - mean(praat_fine), ...
+                    ac_fine    - mean(ac_fine), ...
+                    maxLagSmp, 'normalized');
+[~, peakIdx] = max(xc);
+lag_time = lags(peakIdx) * dt_fine;                      % seconds Praat lags MATLAB
+
+fprintf('Detected lag (Praat vs MATLAB): %.1f ms  →  shifting Praat time axis\n', lag_time*1000);
+
+% Shift Praat timestamps left so both grids are temporally coincident
+praatTimes_corr = praatTimes - lag_time;
+
+%% Build a common uniform time grid over the overlapping range and interpolate
+dt      = frameShift / Fs;
+t_start = max(frameTimes(1),       praatTimes_corr(1));
+t_end   = min(frameTimes(end),     praatTimes_corr(end));
+
+if t_start >= t_end
+    error('No temporal overlap after lag correction. Check praat_f0.txt and audio file.');
+end
+
+t_common = (t_start : dt : t_end)';
+
+pF0_common     = interp1(praatTimes_corr, praatF0, t_common, 'linear');
+f0_ac_common   = interp1(frameTimes,      f0_ac,   t_common, 'linear');
+f0_cl_common   = interp1(frameTimes,      f0_cl,   t_common, 'linear');
+f0_ceps_common = interp1(frameTimes,      f0_ceps, t_common, 'linear');
+
+fprintf('Common grid: %.4f s  to  %.4f s  (%d samples, dt = %.1f ms)\n', ...
+    t_common(1), t_common(end), numel(t_common), dt*1000);
+
+%% Compute MAE — two forms
+
+% --- Form 1: raw (no lag correction) ---
+% Direct sample-to-sample comparison: Praat interpolated onto MATLAB frame
+% times, no temporal shift. Reflects the full error including window-offset.
+praatF0_raw = interp1(praatTimes, praatF0, frameTimes, 'linear', NaN);
+validMask   = ~isnan(praatF0_raw);
+pF0_raw     = praatF0_raw(validMask);
+fA_raw      = f0_ac(validMask);
+fB_raw      = f0_cl(validMask);
+fC_raw      = f0_ceps(validMask);
+
+mae_ac_raw   = mean(abs(pF0_raw - fA_raw));
+mae_cl_raw   = mean(abs(pF0_raw - fB_raw));
+mae_ceps_raw = mean(abs(pF0_raw - fC_raw));
+
+% --- Form 2: lag-corrected (temporally aligned) ---
+% After the 26.3 ms lag correction, Praat and MATLAB are on the same common
+% grid. This MAE reflects only algorithmic differences, not window-offset.
+mae_ac_corr   = mean(abs(pF0_common - f0_ac_common));
+mae_cl_corr   = mean(abs(pF0_common - f0_cl_common));
+mae_ceps_corr = mean(abs(pF0_common - f0_ceps_common));
+
+fprintf('\n=== MAE (raw, no lag correction) ===\n');
+fprintf('MAE Autocorrelation: %s\n',         num2str(mae_ac_raw));
+fprintf('MAE Center-Clipped Autocorr: %s\n', num2str(mae_cl_raw));
+fprintf('MAE Cepstrum: %s\n',                num2str(mae_ceps_raw));
+
+fprintf('\n=== MAE (lag-corrected, %.1f ms shift) ===\n', lag_time*1000);
+fprintf('MAE Autocorrelation: %s\n',         num2str(mae_ac_corr));
+fprintf('MAE Center-Clipped Autocorr: %s\n', num2str(mae_cl_corr));
+fprintf('MAE Cepstrum: %s\n',                num2str(mae_ceps_corr));
+
+%% Figure 1: all F0 curves on same time axis
+figure('Name','F0 Comparison','NumberTitle','off');
+plot(t_common, pF0_common,     '-k', 'LineWidth', 1.5); hold on;
+plot(t_common, f0_ac_common,   '-r');
+plot(t_common, f0_cl_common,   '-b');
+plot(t_common, f0_ceps_common, '-g');
+xlabel('Time (s)'); ylabel('F0 (Hz)');
+legend('Praat interp','Autocorr','Center-Clipped','Cepstrum');
+title('Fundamental Frequency Comparison');
+grid on;
+xlim([t_common(1), t_common(end)]);
+
+%% Figure 2: residuals
+figure('Name','F0 Residuals','NumberTitle','off');
+subplot(4,1,1)
+plot(t_common, pF0_common - f0_ac_common,   '-r');
+ylabel('Delta F0 (Hz)'); title('F0 - Autocorr'); grid on;
+subplot(4,1,2)
+plot(t_common, pF0_common - f0_cl_common,   '-b');
+ylabel('Delta F0 (Hz)'); title('F0 - Center-Clipped'); grid on;
+subplot(4,1,3)
+plot(t_common, pF0_common - f0_ceps_common, '-g');
+ylabel('Delta F0 (Hz)'); title('F0 - Cepstrum'); grid on;
+subplot(4,1,4)
+plot(praatTimes, praatF0, '-k', 'LineWidth', 1.0);
+xlabel('Time (s)'); ylabel('F0 (Hz)'); title('Praat F0 (raw .txt)'); grid on;
+
+% End of audio_showv2
